@@ -4,7 +4,7 @@ A small automation I built to learn n8n. Every 30 minutes it pulls the current B
 
 I wanted something with live data so I could actually watch it run and debug it, instead of waiting a day for the next result.
 
-![Telegram message from the bot](images/telegram_message.png)
+![Telegram message from the bot](images/telegram_message.jpg)
 
 ## How it works
 
