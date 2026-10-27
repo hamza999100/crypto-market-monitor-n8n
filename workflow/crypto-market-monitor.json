@@ -1,0 +1,190 @@
+{
+  "name": "Crypto Market Monitor",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "88ad982f-d879-4bed-9fc8-ff50cc6bb9b9",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID", 
+        "text": "=   {{ $('Code').item.json.message }}\n\n   🤖{{ $json.content.parts[0].text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1056,
+        0
+      ],
+      "id": "465a6dac-d167-45cd-b560-6f049b764867",
+      "name": "Send a text message",
+      "webhookId": "cf33db63-92c8-4941-8bdf-523e371f9567",
+      "credentials": {
+        "telegramApi": {
+          "id": "yBysisNC0YokgAAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "     https://api.kraken.com/0/public/Ticker?pair=XBTEUR,ETHEUR",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "0fd391de-927f-43c9-b369-cf8e264886b7",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=   You are a concise market commentator. Using only this data, write at most 3 short sentences in plain English about how Bitcoin and Ethereum are moving today (change since today's open, and where the price sits in the 24h range). No advice, no predictions, no emojis.\n\n   Data: {{ JSON.stringify($json.coins) }}\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "fb8fa1d0-af77-4d31-941b-12963e1c31a5",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "vSVv5muLM2t0dr8d",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ALERT_PCT = 1.00; // 🚨 alert if a coin moves this % or more since the last run\n\nconst r = $input.first().json.result;\nconst state = $getWorkflowStaticData('global'); // remembered between scheduled runs\nconst prev = state.lastPrices || {};\n\nconst coins = [\n  { key: 'XXBTZEUR', name: 'Bitcoin', symbol: 'BTC' },\n  { key: 'XETHZEUR', name: 'Ethereum', symbol: 'ETH' },\n];\n\nconst eur = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });\nconst fmtPct = p => (p >= 0 ? '+' : '') + p.toFixed(2) + '%';\n\nconst data = coins.map(c => {\n  const t = r[c.key];\n  const price = parseFloat(t.c[0]);\n  const open = parseFloat(t.o);\n  const high24h = parseFloat(t.h[1]);\n  const low24h = parseFloat(t.l[1]);\n  const changePct = ((price - open) / open) * 100;\n  const prevPrice = prev[c.symbol];\n  const sinceLastPct = prevPrice ? ((price - prevPrice) / prevPrice) * 100 : null;\n  const alert = sinceLastPct !== null && Math.abs(sinceLastPct) >= ALERT_PCT;\n  return {\n    symbol: c.symbol, name: c.name, price, open, high24h, low24h,\n    changePct: Number(changePct.toFixed(2)),\n    sinceLastPct: sinceLastPct === null ? null : Number(sinceLastPct.toFixed(2)),\n    alert,\n  };\n});\n\n// save current prices for the next run\nstate.lastPrices = Object.fromEntries(data.map(d => [d.symbol, d.price]));\nstate.lastRun = new Date().toISOString();\n\nconst time = new Date().toLocaleString('de-DE', {\n  timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short',\n});\n\nconst lines = data.map(d => {\n  const icon = d.alert ? '🚨' : (d.changePct >= 0 ? '🟢' : '🔴');\n  const last = d.sinceLastPct === null ? 'first run' : `${fmtPct(d.sinceLastPct)} since last update`;\n  return `${icon} ${d.symbol}: ${eur.format(d.price)}\\n` +\n         `   ${fmtPct(d.changePct)} today · ${last}\\n` +\n         `   24h range: ${eur.format(d.low24h)} – ${eur.format(d.high24h)}`;\n});\n\nconst anyAlert = data.some(d => d.alert);\nconst header = anyAlert\n  ? `🚨 BIG MOVE (≥ ${ALERT_PCT}% since last update)\\n`\n  : '';\n\nconst message = `${header}📊 Crypto update – ${time}\\n\\n${lines.join('\\n\\n')}`;\n\nreturn [{ json: { time, anyAlert, coins: data, message } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "cc79570f-25f6-45ab-bdfd-f0990c2854bc",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        16,
+        -208
+      ],
+      "id": "f5c9f92d-ac86-45b8-a347-b945bb7562ae",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b0b8f51e-91cb-4d08-ac73-5fc9f3ae55df",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8e4fedcfb268dd004400a05e5456fcb3849edbc34a794aaf13dc7d2611bb1f94"
+  },
+  "nodeGroups": [],
+  "id": "m3JKAxwGFtz2ajWi",
+  "tags": []
+}
